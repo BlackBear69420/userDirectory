@@ -37,10 +37,7 @@ Install the required dependencies by running:
 
 npm install
 
-### 5. Add Your API Key
-To run the app successfully, you need to add your API key to the appropriate place in the code. Look for the file config.js and replace the existing API_KEY  with your API key.
-
-### 6. Run the App
+### 5. Run the App
 Now, you can run the app on your preferred emulator or physical device:
 
 

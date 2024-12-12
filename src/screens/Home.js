@@ -7,7 +7,10 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   TextInput,
-  Image
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { fetchUsers } from '../data/users';
 import FontAwesomeIcon from 'react-native-vector-icons/FontAwesome';
@@ -20,15 +23,30 @@ const Home = ({ navigation }) => {
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isInitialLoading, setInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [isModalVisible, setModalVisible] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
 
   const searchInputRef = useRef(null);
 
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (inputFocused) {
+        setInputFocused(false);
+        searchInputRef.current?.blur();
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [inputFocused]);
 
   useEffect(() => {
     if (searchText.trim() === '') {
@@ -57,6 +75,7 @@ const Home = ({ navigation }) => {
       console.error(error);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -78,9 +97,13 @@ const Home = ({ navigation }) => {
   const renderUser = ({ item }) => (
     <TouchableOpacity
       style={styles.userCard}
-      onPress={() => navigation.navigate('UserDetails', { user: item })}
+      onPress={() =>
+        navigation.navigate('UserDetails', {
+          user: item,
+          imageUrl: `https://picsum.photos/id/${item.id + 50}/200/300`,
+        })
+      }
     >
-
       <Image
         style={styles.image}
         source={{
@@ -93,12 +116,9 @@ const Home = ({ navigation }) => {
       </View>
     </TouchableOpacity>
   );
-  if (loading) {
-    return <Loader />
-  }
 
   const renderFooter = () => {
-    if (!loading) return null;
+    if (!loading || isInitialLoading) return null;
     return <ActivityIndicator style={styles.loader} />;
   };
 
@@ -106,64 +126,71 @@ const Home = ({ navigation }) => {
     if (searchInputRef.current) searchInputRef.current.blur();
   };
 
-  return (
+  return isInitialLoading ? (
+    <Loader />
+  ) : (
     <TouchableOpacity
       activeOpacity={1}
       onPress={closeKeyboard}
       style={styles.container}
     >
-      <View style={styles.searchBarContainer}>
-        <TextInput
-          ref={searchInputRef}
-          style={styles.searchBar}
-          placeholder="Search by name"
-          value={searchText}
-          onChangeText={(text) => setSearchText(text)}
-          placeholderTextColor="grey"
-        />
-        <TouchableOpacity
-          style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 4, padding: 12, justifyContent: 'center', alignItems: 'center' }}
-          onPress={() => setModalVisible(true)}
-        >
-          <FontAwesomeIcon
-            name="sliders"
-            size={24}
-            color="black"
-            style={styles.filterIcon}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.searchBarContainer}>
+          <TextInput
+            ref={searchInputRef}
+            style={[
+              styles.searchBar,
+              inputFocused && styles.searchBarExpanded,
+            ]}
+            placeholder="Search by name"
+            value={searchText}
+            onChangeText={(text) => setSearchText(text)}
+            placeholderTextColor="grey"
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
           />
-        </TouchableOpacity>
-
-
-      </View>
-
-      {filteredUsers.length === 0 && !loading ? (
-        <View style={{ flex: 0.8, justifyContent: 'center', alignItems: 'center' }}>
-          <LottieView
-            width={200}
-            height={200}
-            source={require('../assets/lotties/ghost.json')}
-            autoPlay
-            loop
-          />
-          <Text style={styles.noUsersText}>No users found</Text>
+          {!inputFocused && (
+            <TouchableOpacity
+              style={styles.filterButton}
+              onPress={() => setModalVisible(true)}
+            >
+              <FontAwesomeIcon name="sliders" size={24} color="black" />
+            </TouchableOpacity>
+          )}
         </View>
 
-      ) : (
-        <FlatList
-          data={filteredUsers}
-          renderItem={renderUser}
-          keyExtractor={(item) => item.id.toString()}
-          onEndReached={loadUsers}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={renderFooter}
-        />
-      )}
+        {filteredUsers.length === 0 && !loading ? (
+          <View style={styles.noUsersContainer}>
+            <LottieView
+              width={200}
+              height={200}
+              source={require('../assets/lotties/ghost.json')}
+              autoPlay
+              loop
+            />
+            <Text style={styles.noUsersText}>No users found</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredUsers}
+            renderItem={renderUser}
+            keyExtractor={(item) => item.id.toString()}
+            onEndReached={loadUsers}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={renderFooter}
+            contentContainerStyle={styles.flatListContent}
+          />
+        )}
 
-      <SortModal
-        isVisible={isModalVisible}
-        onClose={() => setModalVisible(false)}
-        onSort={handleSort}
-      />
+        <SortModal
+          isVisible={isModalVisible}
+          onClose={() => setModalVisible(false)}
+          onSort={handleSort}
+        />
+      </KeyboardAvoidingView>
     </TouchableOpacity>
   );
 };
@@ -174,13 +201,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 10,
-    backgroundColor: '#FCFBFC'
+    backgroundColor: '#FCFBFC',
   },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
-    marginRight: 10
   },
   searchBar: {
     flex: 1,
@@ -189,27 +215,38 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     paddingHorizontal: 10,
     height: 50,
-    marginRight: 10
+    marginRight: 10,
   },
-  filterIcon: {
-    marginLeft: 10,
+  searchBarExpanded: {
+    marginRight: 0,
+    flex: 1,
+    borderColor: '#000',
+    borderWidth: 2,
+  },
+  filterButton: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 4,
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userCard: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
+    borderBottomColor: '#EDEAE0',
     flexDirection: 'row',
-    gap: 30
+    gap: 30,
   },
   image: {
     width: 50,
     height: 50,
-    borderRadius: 4
+    borderRadius: 4,
   },
   userName: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#232B2B'
+    color: '#232B2B',
   },
   userEmail: {
     fontSize: 14,
@@ -218,33 +255,18 @@ const styles = StyleSheet.create({
   loader: {
     marginVertical: 10,
   },
+  noUsersContainer: {
+    flex: 0.8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   noUsersText: {
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
     color: 'gray',
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-  },
-  sortOption: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-  },
-  closeButton: {
-    padding: 10,
-    alignItems: 'center',
-    backgroundColor: '#ddd',
-    marginTop: 10,
-    borderRadius: 5,
+  flatListContent: {
+    paddingBottom: 20,
   },
 });
